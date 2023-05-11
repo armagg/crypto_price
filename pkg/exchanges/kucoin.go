@@ -1,7 +1,6 @@
 package exchanges 
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -10,20 +9,24 @@ import (
 	"time"
 )
 
+var price struct {
+    Data struct {
+        Price string `json:"price"`
+    } `json:"data"`
+}
+
 const (
     baseURL = "https://api.kucoin.com/api/v1/market/orderbook/level1"
 )
 
-func GetAllPrices(cryptoList []string) {
-    // list of cryptocurrencies to retrieve the price for
-
-    // set up a wait group for parallel execution
+func GetPricesKucoin(cryptoList []string) {
+    
     var wg sync.WaitGroup
     wg.Add(len(cryptoList))
 
     // set up a map to store the prices of all cryptocurrencies
     cryptoPrices := make(map[string]float64)
-
+    cryptoPricesMutex := &sync.Mutex{}
     // channel to handle errors
     errChan := make(chan error)
 
@@ -58,12 +61,7 @@ func GetAllPrices(cryptoList []string) {
                 return
             }
 
-            // parse the response body for price
-            var price struct {
-                Data struct {
-                    Price string `json:"price"`
-                } `json:"data"`
-            }
+            
 
             err = UnmarshalJSON(body, &price)
             if err != nil {
@@ -71,11 +69,12 @@ func GetAllPrices(cryptoList []string) {
                 return
             }
 
-            p, err := strconv.ParseFloat(price.Data.Price, 64)
+            p, err := strconv.ParseFloat(price.Data.Price, 128)
 			if err != nil {
 				errChan <- err
 				return
 			}
+            writeToDict(crypto, p, cryptoPricesMutex, cryptoPrices)
 			cryptoPrices[crypto] = p
         }(crypto)
     }
@@ -89,16 +88,21 @@ func GetAllPrices(cryptoList []string) {
         }
     }()
 
-    // wait for all requests to complete
     wg.Wait()
 
     // print the prices
     for crypto, price := range cryptoPrices {
-        fmt.Printf("%s: %.2f\n", crypto, price)
+        if price < 1{
+        fmt.Printf("%s: %.9f\n", crypto, price)
+        } else{
+            fmt.Printf("%s: %.2f\n", crypto, price)
+        }   
     }
 }
 
-// UnmarshalJSON is a custom unmarshaler to handle JSON response with unknown fields
-func UnmarshalJSON(data []byte, v interface{}) error {
-    return json.Unmarshal(data, v)
+
+func writeToDict(key string, val float64, mutex *sync.Mutex, dict map[string]float64) {
+    mutex.Lock()
+    defer mutex.Unlock()
+    dict[key] = val
 }
