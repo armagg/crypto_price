@@ -8,7 +8,7 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-func GetConfigs()(map[string]string, error){
+func GetConfigs()(map[string]string){
 	f, err := os.ReadFile("pkg/config/env.yml")
 
     if err != nil {
@@ -24,5 +24,5 @@ func GetConfigs()(map[string]string, error){
     }
 
     fmt.Println(data)
-    return data, nil
+    return data
 }
