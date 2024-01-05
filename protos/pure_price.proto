@@ -1,0 +1,19 @@
+syntax = "proto3";
+package protos;
+
+option go_package = "pkg/server";
+
+
+service CryptoPriceService {
+  rpc GetCryptoPrice (PriceRequest) returns (PriceResponse) {}
+}
+
+message PriceRequest {
+  string source = 1;
+  string base = 2;
+  string quote = 3;
+}
+
+message PriceResponse {
+  double price = 1;
+}
