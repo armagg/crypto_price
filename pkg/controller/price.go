@@ -3,7 +3,6 @@ package controller
 
 import (
 	"time"
-	"log"
 	"fmt"
 	"strconv"
 	"net/http"
@@ -19,7 +18,7 @@ type PriceInfo struct {
     Timestamp time.Time
 }
 
-func handlePriceRequest(w http.ResponseWriter, r *http.Request) {
+func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
     symbol := r.URL.Query().Get("symbol")
     source := r.URL.Query().Get("source")
 
