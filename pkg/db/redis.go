@@ -11,9 +11,10 @@ import (
 func CreatRedisClient() *redis.Client {
 	config := config.GetConfigs()
 	client := redis.NewClient(&redis.Options{
-		Addr:     config["REDIS_HOST"], // Replace with the address of your Redis instance
-		Password: "",               // Set if your Redis instance requires authentication
-		DB:       0,                // Specify the Redis database number to use
+		Addr:     config["REDIS_HOST"], 
+		Password: "",               
+		DB:       0,                
+		
 	})
 
 	// set timeout for connect 5 Seconds
