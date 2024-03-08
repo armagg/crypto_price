@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto_price/pkg/server"
+	"crypto_price/pkg/jobs"
 )
 
 
 func main(){
-	server.StartServer()
+	go jobs.GetData()
+	server.StartHTTPServer()
 }
