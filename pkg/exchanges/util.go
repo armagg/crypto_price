@@ -3,7 +3,6 @@ package exchanges
 import (
 	"encoding/json"
 	"sync"
-	"time"
 
 )
 
