@@ -1,19 +1,31 @@
 package jobs
 
-
 import (
-	"time"
+	"fmt"
 	"log"
-	"crypto_price/pkg/db"
-	"crypto_price/pkg/exchanges"
+	"time"
+	// "crypto_price/pkg/db"
+	// "crypto_price/pkg/exchanges"
 )
 
 func GetData(){
-
+	tickerCalculateUsdtirr := time.NewTicker(2 * time.Minute)
 	tickerKucoin := time.NewTicker(15 * time.Second)
 	tickerBinance := time.NewTicker(15 * time.Second)
-	rdb := db.CreatRedisClient()
 
+	rdb := db.CreatRedisClient()
+	go func(){
+		for ; true; <-tickerCalculateUsdtirr.C {
+			log.Println("Starting to calculate usdtirr")
+		    results, err := calculateUsdtIrrPriceJob()
+			if err != nil{
+				log.Println("Error calculating usdtirr price:", err)
+			}
+			fmt.Println(results)
+		}
+
+	}()
+	
 	go func() {
 		for ; true; <-tickerKucoin.C {
 			symbols, err := db.GetKucoinSymbolsFromDB()
@@ -28,6 +40,7 @@ func GetData(){
 				if err := db.StorePricesInRedis(rdb, prices, "Kucoin"); err != nil {
 					log.Println("Error storing prices in Redis:", err)
 				}
+
 			}
 		}
 	}()
