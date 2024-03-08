@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 	"time"
-	// "crypto_price/pkg/db"
-	// "crypto_price/pkg/exchanges"
+	"crypto_price/pkg/db"
+	"crypto_price/pkg/exchanges"
 )
 
 func GetData(){
