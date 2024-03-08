@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"log"
 )
 
 type PriceResponse struct {
@@ -51,7 +52,6 @@ func GetPricesKucoin(cryptoList []string) (map[string]float64, error){
 				errChan <- err
 				return
 			}
-
 			price, err := strconv.ParseFloat(priceResp.Data.Price, 64)
 			if err != nil {
 				errChan <- err
@@ -59,7 +59,7 @@ func GetPricesKucoin(cryptoList []string) (map[string]float64, error){
 			}
 
 			cryptoPricesMutex.Lock()
-			cryptoPrices[crypto] = price
+			cryptoPrices[fmt.Sprintf("%sUSDT", crypto)] = price
 			cryptoPricesMutex.Unlock()
 		}(crypto)
 	}
@@ -74,7 +74,9 @@ func GetPricesKucoin(cryptoList []string) (map[string]float64, error){
 	}
 
 	for crypto, price := range cryptoPrices {
-		if price < 1 {
+		if 0.01 < price && price < 1{
+			fmt.Printf("%s: %.4f\n", crypto, price)
+		} else if price <= 0.01 {
 			fmt.Printf("%s: %.9f\n", crypto, price)
 		} else {
 			fmt.Printf("%s: %.2f\n", crypto, price)
