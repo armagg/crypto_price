@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"log"
 )
 
 type PriceResponse struct {
