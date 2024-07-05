@@ -46,3 +46,29 @@ func GetAllBinancePrices() (map[string]float64, error) {
 
 	return prices, nil
 }
+
+func GetNLastCandlesOfBinance(symbol string, limit int) ([]map[string]interface{}, error) {
+    client := &http.Client{
+        Timeout: 5 * time.Second,
+    }
+    url := fmt.Sprintf("https://api.binance.com/api/v3/klines?symbol=%s&interval=1m&limit=%d", symbol, limit)
+
+    resp, err := client.Get(url)
+    if err != nil {
+        return nil, fmt.Errorf("failed to make request to Binance API: %w", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("failed to retrieve data from Binance. Status code: %v", resp.StatusCode)
+    }
+
+    var candles []map[string]interface{}
+    err = json.NewDecoder(resp.Body).Decode(&candles)
+    if err != nil {
+        return nil, fmt.Errorf("failed to decode response from Binance API: %w", err)
+    }
+
+    return candles, nil
+}
+
