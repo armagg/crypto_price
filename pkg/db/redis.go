@@ -64,7 +64,7 @@ func StorePricesInRedis(client *redis.Client, prices map[string]float64, source 
             return err
         }
 
-        fmt.Printf("[%s] Stored %s price from %s: %f\n", now.Format(time.RFC3339), symbol, source, price)
+        // fmt.Printf("[%s] Stored %s price from %s: %f\n", now.Format(time.RFC3339), symbol, source, price)
     }
 
     return nil
