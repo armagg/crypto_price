@@ -1,7 +1,6 @@
 package jobs
 
 import (
-	"fmt"
 	"log"
 	"time"
 	"crypto_price/pkg/db"
