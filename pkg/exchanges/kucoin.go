@@ -72,14 +72,14 @@ func GetPricesKucoin(cryptoList []string) (map[string]float64, error){
 		fmt.Println(err) // Handle errors more robustly depending on requirements
 	}
 
-	for crypto, price := range cryptoPrices {
-		if 0.01 < price && price < 1{
-			fmt.Printf("%s: %.4f\n", crypto, price)
-		} else if price <= 0.01 {
-			fmt.Printf("%s: %.9f\n", crypto, price)
-		} else {
-			fmt.Printf("%s: %.2f\n", crypto, price)
-		}
-	}
+	// for crypto, price := range cryptoPrices {
+	// 	if 0.01 < price && price < 1{
+	// 		fmt.Printf("%s: %.4f\n", crypto, price)
+	// 	} else if price <= 0.01 {
+	// 		fmt.Printf("%s: %.9f\n", crypto, price)
+	// 	} else {
+	// 		fmt.Printf("%s: %.2f\n", crypto, price)
+	// 	}
+	// }
     return cryptoPrices, nil
 }
