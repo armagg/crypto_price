@@ -16,12 +16,12 @@ func GetData(){
 	rdb := db.CreatRedisClient()
 	go func(){
 		for ; true; <-tickerCalculateUsdtirr.C {
-			log.Println("Starting to calculate usdtirr")
+			log.Println("Starting to calculate usdtirr",)
 		    results, err := calculateUsdtIrrPriceJob()
 			if err != nil{
 				log.Println("Error calculating usdtirr price:", err)
 			}
-			fmt.Println(results)
+			log.Println(results)
 		}
 
 	}()
@@ -37,7 +37,7 @@ func GetData(){
 			if err != nil {
 				log.Println("Error fetching Kucoin prices:", err)
 			} else {
-				if err := db.StorePricesInRedis(rdb, prices, "Kucoin"); err != nil {
+				if err := db.StorePricesInRedis(rdb, prices, "kucoin"); err != nil {
 					log.Println("Error storing prices in Redis:", err)
 				}
 
@@ -51,7 +51,7 @@ func GetData(){
 			if err != nil {
 				log.Println("Error fetching Binance prices:", err)
 			} else {
-				if err := db.StorePricesInRedis(rdb, prices, "Binance"); err != nil {
+				if err := db.StorePricesInRedis(rdb, prices, "binance"); err != nil {
 					log.Println("Error storing prices in Redis:", err)
 			}
 			}			
