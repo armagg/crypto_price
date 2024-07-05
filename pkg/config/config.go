@@ -23,6 +23,5 @@ func GetConfigs()(map[string]string){
         log.Fatal(err)
     }
 
-    fmt.Println(data)
     return data
 }
