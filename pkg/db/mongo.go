@@ -31,7 +31,7 @@ import (
 func GetKucoinSymbolsFromDB() ([]string, error) {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-	data := config.GetConfigs()
+	  data := config.GetConfigs()
     client, err := CreatMongoClient(ctx, data["MONGO_HOST"])
     
     defer client.Disconnect(ctx)
