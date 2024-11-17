@@ -12,7 +12,8 @@ func GetData(){
 	tickerKucoin := time.NewTicker(15 * time.Second)
 	tickerBinance := time.NewTicker(15 * time.Second)
 
-	rdb := db.CreatRedisClient()
+	rdb := db.CreateRedisClient()
+	defer rdb.Close()
 	go func(){
         for range tickerCalculateUsdtirr.C {
             log.Println("Starting to calculate usdtirr")

@@ -8,7 +8,7 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-func CreatRedisClient() *redis.Client {
+func CreateRedisClient() *redis.Client {
 	config := config.GetConfigs()
 	client := redis.NewClient(&redis.Options{
 		Addr:     config["REDIS_HOST"], 
@@ -51,12 +51,13 @@ func StorePricesInRedis(client *redis.Client, prices map[string]float64, source 
 		longTermTimeKey := fmt.Sprintf("%s:%s:long:time", source, symbol)
         // Short-term key with a 20-second expiration
         shortTermKey := fmt.Sprintf("%s:%s:short", source, symbol)
-
+		shortTermTimeKey := fmt.Sprintf("%s:%s:short:time", source, symbol)
         // Use a transaction to set both keys atomically
         _, err := client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
             pipe.Set(ctx, longTermKey, price, 10*time.Minute)
             pipe.Set(ctx, shortTermKey, price, 20*time.Second)
 			pipe.Set(ctx, longTermTimeKey, now.Unix(), 10*time.Minute)
+			pipe.Set(ctx, shortTermTimeKey, now.Unix(), 20*time.Second)
             return nil
         })
 
