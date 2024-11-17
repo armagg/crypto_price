@@ -14,47 +14,45 @@ func GetData(){
 
 	rdb := db.CreatRedisClient()
 	go func(){
-		for ; true; <-tickerCalculateUsdtirr.C {
-			log.Println("Starting to calculate usdtirr",)
-		    results, err := calculateUsdtIrrPriceJob()
-			if err != nil{
-				log.Println("Error calculating usdtirr price:", err)
-			}
-			log.Println(results)
-		}
-
-	}()
+        for range tickerCalculateUsdtirr.C {
+            log.Println("Starting to calculate usdtirr")
+            results, err := calculateUsdtIrrPriceJob()
+            if err != nil {
+                log.Println("Error calculating usdtirr price:", err)
+            } else {
+                log.Println(results)
+            }
+        }
+    }()
 	
 	go func() {
-		for ; true; <-tickerKucoin.C {
-			symbols, err := db.GetKucoinSymbolsFromDB()
-			if err != nil {
-				log.Println("Error fetching symbols from DB:", err)
-				continue
-			}
-			prices, err := exchanges.GetPricesKucoin(symbols)
-			if err != nil {
-				log.Println("Error fetching Kucoin prices:", err)
-			} else {
-				if err := db.StorePricesInRedis(rdb, prices, "kucoin"); err != nil {
-					log.Println("Error storing prices in Redis:", err)
-				}
+        for range tickerKucoin.C {
+            symbols, err := db.GetKucoinSymbolsFromDB()
+            if err != nil {
+                log.Println("Error fetching symbols from DB:", err)
+                continue
+            }
+            prices, err := exchanges.GetPricesKucoin(symbols)
+            if err != nil {
+                log.Println("Error fetching Kucoin prices:", err)
+            } else {
+                if err := db.StorePricesInRedis(rdb, prices, "kucoin"); err != nil {
+                    log.Println("Error storing prices in Redis:", err)
+                }
+            }
+        }
+    }()
 
-			}
-		}
-	}()
-
-	go func() {
-		for ; true; <-tickerBinance.C {
-			prices, err := exchanges.GetAllBinancePrices()
-			if err != nil {
-				log.Println("Error fetching Binance prices:", err)
-			} else {
-				if err := db.StorePricesInRedis(rdb, prices, "binance"); err != nil {
-					log.Println("Error storing prices in Redis:", err)
-			}
-			}			
-		}
-	}()
-
+    go func() {
+        for range tickerBinance.C {
+            prices, err := exchanges.GetAllBinancePrices()
+            if err != nil {
+                log.Println("Error fetching Binance prices:", err)
+            } else {
+                if err := db.StorePricesInRedis(rdb, prices, "binance"); err != nil {
+                    log.Println("Error storing prices in Redis:", err)
+                }
+            }
+        }
+    }()
 }
