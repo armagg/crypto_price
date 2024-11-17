@@ -1,90 +1,170 @@
 package controller
 
-
 import (
-	"time"
-	"fmt"
-	"strconv"
-	"net/http"
-	"encoding/json"
-	"crypto_price/pkg/db"
-	"github.com/go-redis/redis/v8"
 	"context"
+	"crypto_price/pkg/db"
+	"encoding/json"
+	"fmt"
+	"github.com/go-redis/redis/v8"
+	"log"
+	"net/http"
+	"strconv"
+	"time"
+    "strings"
+    "regexp"
 )
 
-
 type PriceInfo struct {
-    Price     float64
-    Timestamp time.Time
+	Price     float64
+	Timestamp time.Time
 }
+
+
+type PriceResponse struct {
+    Symbol  string  `json:"symbol"`
+    Source  string  `json:"source"`
+    Price   float64 `json:"price"`
+    Elapsed float64 `json:"elapsed"`
+    Note    string  `json:"note,omitempty"`
+}
+
 
 func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
-    symbol := r.URL.Query().Get("symbol")
-    source := r.URL.Query().Get("source")
+	base := r.URL.Query().Get("symbol")
+	source := r.URL.Query().Get("source")
+	quote := r.URL.Query().Get("quote")
+	source_usdt := r.URL.Query().Get("source_usdt")
 
-    if symbol == "" || source == "" {
-        http.Error(w, "Please specify both 'symbol' and 'source' query parameters.", http.StatusBadRequest)
+	if base == "" {
+		http.Error(w, "Please specify both 'base' to get price", http.StatusBadRequest)
+		return
+	}
+	if quote == "" {
+		quote = "USDT"
+	}
+	if source == "" {
+		source = "binance"
+	}
+	if source_usdt == "" {
+		source_usdt = "nobitex"
+	}
+    if !isValidSymbol(base) || !isValidSource(source) || !isValidQuote(quote) {
+        http.Error(w, "Invalid input parameters.", http.StatusBadRequest)
         return
     }
 
-    priceInfo, err := getPriceFromRedis(symbol, source)
-    if err != nil {
-        http.Error(w, fmt.Sprintf("Error retrieving price: %v", err), http.StatusInternalServerError)
-        return
-    }
+	ctx := r.Context()
+    priceInfo := PriceInfo{}
+    var err error
+	symbol := base + quote
 
+
+	if quote == "USDT" {
+		log.Printf("Fetching price for %s from %s", symbol, source)
+		priceInfo, err = getPriceFromRedis(ctx, symbol, source)
+		if err != nil {
+			log.Printf("Error retrieving price for %s from %s: %v", symbol, source, err)
+			http.Error(w, fmt.Sprintf("Error retrieving price: %v", err), http.StatusInternalServerError)
+			return
+
+		}
+		log.Printf("Fetching price for %s from %s", symbol, source)
+	} else if quote == "irr" || quote == "irt" {
+
+
+
+    }
     elapsed := time.Since(priceInfo.Timestamp).Seconds()
 
-    response := map[string]interface{}{
-        "symbol": symbol,
-        "source": source,
-        "price":  priceInfo.Price,
-        "elapsed": elapsed,
-    }
+		response := map[string]interface{}{
+			"symbol":  symbol,
+			"source":  source,
+			"price":   priceInfo.Price,
+			"elapsed": elapsed,
+		}
 
-    if elapsed > 20 { // Assuming 20 seconds as the threshold for short-term freshness
-        response["note"] = "Price may be outdated."
-    }
+		if elapsed > 20 { // Assuming 20 seconds as the threshold for short-term freshness
+			response["note"] = "Price may be outdated."
+		}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(response)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
 }
 
-func getPriceFromRedis(symbol, source string) (PriceInfo, error) {
-    var priceInfo PriceInfo
-	rdb := db.CreatRedisClient()
-	ctx := context.Background()
-    // Attempt to get the price from the short-term key
-    shortTermKey := fmt.Sprintf("%s:%s:short", source, symbol)
-    price, err := rdb.Get(ctx, shortTermKey).Result()
-    if err == redis.Nil {
-        // If the short-term price is not available, fall back to the long-term price
-        longTermKey := fmt.Sprintf("%s:%s:long", source, symbol)
-        longTermTimeKey := fmt.Sprintf("%s:%s:long:time", source, symbol)
+func getPriceFromRedis(ctx context.Context, symbol, source string) (PriceInfo, error) {
+	var priceInfo PriceInfo
 
-        price, err = rdb.Get(ctx, longTermKey).Result()
-        if err != nil {
-            return priceInfo, fmt.Errorf("price not available for %s from %s", symbol, source)
-        }
+	// Reuse the Redis client (assumed to be initialized at the package level)
+	rdb := db.CreateRedisClient()
 
-        // Get the timestamp from the long-term time key
-        timestamp, err := rdb.Get(ctx, longTermTimeKey).Int64()
-        if err != nil {
-            return priceInfo, fmt.Errorf("timestamp not available for %s from %s", symbol, source)
-        }
+	// Short-term keys
+	shortTermKey := fmt.Sprintf("%s:%s:short", source, symbol)
+	shortTermTimeKey := fmt.Sprintf("%s:%s:short:time", source, symbol)
 
-        priceInfo.Timestamp = time.Unix(timestamp, 0)
-    } else if err != nil {
-        return priceInfo, fmt.Errorf("error retrieving price from Redis: %v", err)
-    } else {
-        // If the short-term price is available, use the current time as the timestamp
-        priceInfo.Timestamp = time.Now()
+	// Attempt to get the price from the short-term key
+	price, err := rdb.Get(ctx, shortTermKey).Result()
+	if err == redis.Nil {
+		// If the short-term price is not available, fall back to the long-term price
+		longTermKey := fmt.Sprintf("%s:%s:long", source, symbol)
+		longTermTimeKey := fmt.Sprintf("%s:%s:long:time", source, symbol)
+
+		price, err = rdb.Get(ctx, longTermKey).Result()
+		if err != nil {
+			if err == redis.Nil {
+				return priceInfo, fmt.Errorf("price not available for %s from %s", symbol, source)
+			}
+			return priceInfo, fmt.Errorf("error retrieving long-term price from Redis: %v", err)
+		}
+
+		// Get the timestamp from the long-term time key
+		timestamp, err := rdb.Get(ctx, longTermTimeKey).Int64()
+		if err != nil {
+			return priceInfo, fmt.Errorf("timestamp not available for %s from %s", symbol, source)
+		}
+		priceInfo.Timestamp = time.Unix(timestamp, 0)
+	} else if err != nil {
+		// Error retrieving short-term price
+		return priceInfo, fmt.Errorf("error retrieving short-term price from Redis: %v", err)
+	} else {
+		// Successfully retrieved short-term price, get the timestamp
+		timestamp, err := rdb.Get(ctx, shortTermTimeKey).Int64()
+		if err != nil {
+			// If timestamp is not available, use the current time
+			priceInfo.Timestamp = time.Now()
+		} else {
+			priceInfo.Timestamp = time.Unix(timestamp, 0)
+		}
+	}
+
+	// Parse the price
+	priceInfo.Price, err = strconv.ParseFloat(price, 64)
+	if err != nil {
+		return priceInfo, fmt.Errorf("error parsing price for %s from %s: %v", symbol, source, err)
+	}
+
+	return priceInfo, nil
+}
+
+
+
+func isValidSource(source string) bool {
+    validSources := map[string]bool{
+        "binance": true,
+        "kucoin":  true,
+        // Add other valid sources
     }
+    return validSources[source]
+}
 
-    priceInfo.Price, err = strconv.ParseFloat(price, 64)
-    if err != nil {
-        return priceInfo, fmt.Errorf("error parsing price for %s from %s: %v", symbol, source, err)
+func isValidQuote(quote string) bool {
+    validQuotes := map[string]bool{
+        "usdt": true,
+        "irr":  true,
     }
+    return validQuotes[strings.ToLower(quote)]
+}
 
-    return priceInfo, nil
+func isValidSymbol(symbol string) bool {
+    validSymbol := regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+    return validSymbol.MatchString(symbol)
 }
