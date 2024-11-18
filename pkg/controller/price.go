@@ -70,9 +70,19 @@ func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("Fetching price for %s from %s", symbol, source)
 	} else if quote == "irr" || quote == "irt" {
-
-
-
+        price, err := GetUsdtIrrFromRedis(ctx, source_usdt, false)
+        if err!= nil {
+            log.Printf("Error retrieving price for %s from %s: %v", symbol, source_usdt, err)
+            http.Error(w, fmt.Sprintf("Error retrieving price: %v", err), http.StatusInternalServerError)
+            return
+        }
+		priceInfo = PriceInfo{
+			Price:  price,
+			Timestamp: time.Now(),
+		}
+	} else {
+        http.Error(w,  "Invalid input parameters.", http.StatusBadRequest)
+        return
     }
     elapsed := time.Since(priceInfo.Timestamp).Seconds()
 
@@ -145,6 +155,21 @@ func getPriceFromRedis(ctx context.Context, symbol, source string) (PriceInfo, e
 	return priceInfo, nil
 }
 
+func GetUsdtIrrFromRedis(ctx context.Context, source_usdt string, adjust_other_exchanges bool) (float64, error) {
+    rdb := db.CreateRedisClient()
+    defer rdb.Close()
+
+    usdtIrrKey := fmt.Sprintf("usdtirr:%s", source_usdt)
+
+    price , err := rdb.Get(ctx, usdtIrrKey).Result()
+    if err != nil {
+        if err == redis.Nil {
+            return -1 , fmt.Errorf("price not available for usdtirr from %s", source_usdt)
+        }
+        return -1 , fmt.Errorf("error retrieving usdtirr price from Redis %v", err)
+    }
+    return strconv.ParseFloat(price, 64)
+}
 
 
 func isValidSource(source string) bool {
