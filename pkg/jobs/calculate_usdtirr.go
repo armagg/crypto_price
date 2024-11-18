@@ -6,7 +6,9 @@ import (
 	"sort"
 	"strconv"
 	"time"
-
+	"github.com/go-redis/redis/v8"
+	"encoding/json"
+	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -30,6 +32,7 @@ type MarketSourceResult struct {
 const (
 	TIME_INTERVAL_TO_LOAD         = 30
 	THRESHOLD_FOR_BIG_TRANSACTION = 50
+	USDTIRR_TTL                   = 300
 )
 
 func calculateUsdtIrrPriceJob() ([]MarketSourceResult, error) {
@@ -126,7 +129,7 @@ func calculateUsdtIrrPriceJob() ([]MarketSourceResult, error) {
 
 }
 
-func calculateMedianAndWeightedMean(transactions []Transaction) (median, weightedMean float64, sumAmounts float64) {
+func calculateMedianAndWeightedMean(transactions []Transaction) (median float64, weightedMean float64, sumAmounts float64) {
 	sort.Slice(transactions, func(i, j int) bool {
 		return transactions[i].Price.(float64) < transactions[j].Price.(float64)
 	})
@@ -136,11 +139,12 @@ func calculateMedianAndWeightedMean(transactions []Transaction) (median, weighte
 		return 0, 0, 0
 	}
 
+
 	// Median
 	if n%2 == 0 {
 		median = transactions[n/2].Price.(float64)
-		median = (transactions[n/2-1].Price.(float64) + transactions[n/2].Price.(float64)) / 2
 	} else {
+		median = (transactions[n/2-1].Price.(float64) + transactions[n/2].Price.(float64)) / 2
 	}
 
 	var sumWeightedPrices float64 = 0.0
@@ -153,4 +157,20 @@ func calculateMedianAndWeightedMean(transactions []Transaction) (median, weighte
 	weightedMean = sumWeightedPrices / sumAmounts
 
 	return median, weightedMean, sumAmounts
+}
+
+
+func StoreUsdtIrrPricesInRedis(rdb *redis.Client, results []MarketSourceResult) error {
+    ctx := context.Background()
+    for _, result := range results {
+        key := fmt.Sprintf("usdtirr:%s", result.Source)
+        value, err := json.Marshal(result)
+        if err != nil {
+            return err
+        }
+        if err := rdb.Set(ctx, key, value, time.Second * 300).Err(); err != nil {
+            return err
+        }
+    }
+    return nil
 }
