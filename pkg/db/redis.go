@@ -3,8 +3,8 @@ package db
 import (
 	"context"
 	"crypto_price/pkg/config"
-	"time"
 	"fmt"
+	"time"
 	"github.com/go-redis/redis/v8"
 )
 
