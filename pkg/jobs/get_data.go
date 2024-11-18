@@ -19,9 +19,13 @@ func GetData(){
             log.Println("Starting to calculate usdtirr")
             results, err := calculateUsdtIrrPriceJob()
             if err != nil {
-                log.Println("Error calculating usdtirr price:", err)
+                log.Println("Error calculating USDTIRR price:", err)
             } else {
                 log.Println(results)
+                // Store results in Redis
+                if err := StoreUsdtIrrPricesInRedis(rdb, results); err != nil {
+                    log.Println("Error storing USDTIRR prices in Redis:", err)
+                }
             }
         }
     }()
