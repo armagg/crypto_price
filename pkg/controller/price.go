@@ -30,7 +30,7 @@ type PriceResponse struct {
 
 
 func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
-	base := r.URL.Query().Get("symbol")
+	base := r.URL.Query().Get("base")
 	source := r.URL.Query().Get("source")
 	quote := r.URL.Query().Get("quote")
 	source_usdt := r.URL.Query().Get("source_usdt")
