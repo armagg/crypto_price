@@ -14,13 +14,13 @@ func CreateRedisClient() *redis.Client {
 	client := redis.NewClient(&redis.Options{
 		Addr:     config["REDIS_HOST"], 
 		Password: "",               
-		DB:       0,                
-		
+		DB:       0,
 	})
 
 	// set timeout for connect 5 Seconds
-	ctx := context.Background()
-
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
 	_, err := client.Ping(ctx).Result()
 	if err != nil {
 		panic(err)
