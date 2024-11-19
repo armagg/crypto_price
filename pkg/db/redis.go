@@ -19,8 +19,7 @@ func CreateRedisClient() *redis.Client {
 	})
 
 	// set timeout for connect 5 Seconds
-	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	_, err := client.Ping(ctx).Result()
 	if err != nil {
