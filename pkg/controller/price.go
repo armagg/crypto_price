@@ -35,8 +35,10 @@ func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
 	quote := r.URL.Query().Get("quote")
 	source_usdt := r.URL.Query().Get("source_usdt")
 
+    w.Header().Set("Content-Type", "application/json")
+
 	if base == "" {
-		http.Error(w, "Please specify both 'base' to get price", http.StatusBadRequest)
+		http.Error(w, "Please specify 'base'  to get price", http.StatusBadRequest)
 		return
 	}
 	if quote == "" {
@@ -56,7 +58,7 @@ func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
     priceInfo := PriceInfo{}
     var err error
-	symbol := base + quote
+	symbol := base + "USDT"
 
 
 	if quote == "USDT" {
@@ -69,17 +71,27 @@ func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
 
 		}
 		log.Printf("Fetching price for %s from %s", symbol, source)
-	} else if quote == "irr" || quote == "irt" {
-        price, err := GetUsdtIrrFromRedis(ctx, source_usdt, false)
+	} else if quote == "IRR" || quote == "IRT" {
+        usdtPrice, err := GetUsdtIrrFromRedis(ctx, source_usdt, false)
         if err!= nil {
             log.Printf("Error retrieving price for %s from %s: %v", symbol, source_usdt, err)
             http.Error(w, fmt.Sprintf("Error retrieving price: %v", err), http.StatusInternalServerError)
             return
         }
+
+        basePrice, err := getPriceFromRedis(ctx, symbol, source)
+		if err != nil {
+			log.Printf("Error retrieving price for %s from %s: %v", symbol, source, err)
+			http.Error(w, fmt.Sprintf("Error retrieving price: %v", err), http.StatusInternalServerError)
+			return
+
+		}
+
 		priceInfo = PriceInfo{
-			Price:  price,
+			Price:  basePrice.Price * usdtPrice,
 			Timestamp: time.Now(),
 		}
+        
 	} else {
         http.Error(w,  "Invalid input parameters.", http.StatusBadRequest)
         return
@@ -97,7 +109,6 @@ func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
 			response["note"] = "Price may be outdated."
 		}
 
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 }
 
