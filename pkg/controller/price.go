@@ -168,7 +168,7 @@ func getPriceFromRedis(ctx context.Context, symbol, source string) (PriceInfo, e
 	var priceInfo PriceInfo
 
 	rdb := db.CreateRedisClient()
-	// No need to defer rdb.Close() since we're reusing the client
+    defer rdb.Close()
 
 	// Short-term keys
 	shortTermKey := fmt.Sprintf("%s:%s:short", source, symbol)
@@ -221,8 +221,7 @@ func getPriceFromRedis(ctx context.Context, symbol, source string) (PriceInfo, e
 // getUsdtIrrFromRedis retrieves the USDT to IRR conversion rate from Redis.
 func getUsdtIrrFromRedis(ctx context.Context, sourceUsdt string) (float64, error) {
 	rdb := db.CreateRedisClient()
-	// No need to defer rdb.Close() since we're reusing the client
-
+    defer rdb.Close()
 	usdtIrrKey := fmt.Sprintf("usdtirr:%s", sourceUsdt)
 
 	value, err := rdb.Get(ctx, usdtIrrKey).Result()
@@ -241,7 +240,6 @@ func getUsdtIrrFromRedis(ctx context.Context, sourceUsdt string) (float64, error
 	return priceStruct.WeightedMean, nil
 }
 
-// isValidSource checks if the provided source is valid.
 func isValidSource(source string) bool {
 	validSources := map[string]bool{
 		"binance": true,
