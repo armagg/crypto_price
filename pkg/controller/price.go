@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"crypto_price/pkg/db"
+    "crypto_price/pkg/models"
 	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v8"
@@ -89,9 +90,9 @@ func HandlePriceRequest(w http.ResponseWriter, r *http.Request) {
 
 		priceInfo = PriceInfo{
 			Price:  basePrice.Price * usdtPrice,
-			Timestamp: time.Now(),
+			Timestamp: basePrice.Timestamp,
 		}
-        
+
 	} else {
         http.Error(w,  "Invalid input parameters.", http.StatusBadRequest)
         return
@@ -172,14 +173,21 @@ func GetUsdtIrrFromRedis(ctx context.Context, source_usdt string, adjust_other_e
 
     usdtIrrKey := fmt.Sprintf("usdtirr:%s", source_usdt)
 
-    price , err := rdb.Get(ctx, usdtIrrKey).Result()
+    value , err := rdb.Get(ctx, usdtIrrKey).Result()
+     
     if err != nil {
         if err == redis.Nil {
             return -1 , fmt.Errorf("price not available for usdtirr from %s", source_usdt)
         }
         return -1 , fmt.Errorf("error retrieving usdtirr price from Redis %v", err)
     }
-    return strconv.ParseFloat(price, 64)
+    var priceStruct models.MarketSourceResult
+    err = json.Unmarshal([]byte(value), &priceStruct)
+    if err != nil {
+        return -1 , fmt.Errorf("price not available for usdtirr from %s", source_usdt)
+    }
+
+    return priceStruct.WeightedMean, nil
 }
 
 
