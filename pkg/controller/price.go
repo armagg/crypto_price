@@ -118,6 +118,7 @@ func getPriceFromRedis(ctx context.Context, symbol, source string) (PriceInfo, e
 
 	// Reuse the Redis client (assumed to be initialized at the package level)
 	rdb := db.CreateRedisClient()
+    defer rdb.Close()
 
 	// Short-term keys
 	shortTermKey := fmt.Sprintf("%s:%s:short", source, symbol)
