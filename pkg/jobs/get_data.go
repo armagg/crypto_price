@@ -12,10 +12,10 @@ func GetData(){
 	tickerKucoin := time.NewTicker(15 * time.Second)
 	tickerBinance := time.NewTicker(15 * time.Second)
 
+
 	go func(){
         for range tickerCalculateUsdtirr.C {
             rdb := db.CreateRedisClient()
-            defer rdb.Close()        
             log.Println("Starting to calculate usdtirr")
             results, err := calculateUsdtIrrPriceJob()
             if err != nil {
@@ -27,13 +27,13 @@ func GetData(){
                     log.Println("Error storing USDTIRR prices in Redis:", err)
                 }
             }
+            rdb.Close()
         }
     }()
 	
 	go func() {
         for range tickerKucoin.C {
             rdb := db.CreateRedisClient()
-            defer rdb.Close()        
             symbols, err := db.GetKucoinSymbolsFromDB()
             if err != nil {
                 log.Println("Error fetching symbols from DB:", err)
@@ -47,13 +47,13 @@ func GetData(){
                     log.Println("Error storing prices in Redis:", err)
                 }
             }
+            rdb.Close()
         }
     }()
 
     go func() {
         for range tickerBinance.C {
             rdb := db.CreateRedisClient()
-            defer rdb.Close()        
             prices, err := exchanges.GetAllBinancePrices()
             if err != nil {
                 log.Println("Error fetching Binance prices:", err)
@@ -62,6 +62,7 @@ func GetData(){
                     log.Println("Error storing prices in Redis:", err)
                 }
             }
+            rdb.Close()
         }
     }()
 }
