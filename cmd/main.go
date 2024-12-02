@@ -5,6 +5,7 @@ import (
 	"crypto_price/pkg/server"
 	"crypto_price/pkg/jobs"
 	"github.com/getsentry/sentry-go"
+	"log"
 )
 
 
