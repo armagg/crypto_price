@@ -3,6 +3,7 @@ package server
 import (
 	"crypto_price/pkg/config"
 	"crypto_price/pkg/controller"
+	"crypto_price/pkg/health"
 	"log"
 	"net/http"
 
@@ -17,6 +18,10 @@ func StartHTTPServer() {
 
     registerMetrics()
     http.Handle("/metrics", promhttp.Handler())
+
+    http.HandleFunc("/health", health.HandleHealthCheck)
+    http.HandleFunc("/health/live", health.HandleLiveness)
+    http.HandleFunc("/health/ready", health.HandleReadiness)
 
     http.HandleFunc("/price", controller.HandlePriceRequest)
 

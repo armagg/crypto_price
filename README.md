@@ -54,5 +54,15 @@ go run cmd/main.go
 
 ## API Endpoints
 
+### Main Endpoints
 - `GET /price`: Get cryptocurrency prices
 - `GET /metrics`: Prometheus metrics
+
+### Health Check Endpoints
+- `GET /health`: Comprehensive health check (includes all services and system status)
+- `GET /health/live`: Liveness probe (simple service availability check)
+- `GET /health/ready`: Readiness probe (checks if service can handle requests)
+
+### Health Check Response Codes
+- `200 OK`: Service is healthy or degraded
+- `503 Service Unavailable`: Service is unhealthy (critical services down)
