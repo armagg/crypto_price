@@ -19,11 +19,12 @@ const (
 	baseURL = "https://api.kucoin.com/api/v1/market/orderbook/level1"
 )
 
-func GetPricesKucoin(cryptoList []string) (map[string]float64, error){
+func GetPricesKucoin(cryptoList []string) (map[string]float64, error) {
 	var wg sync.WaitGroup
 	cryptoPrices := make(map[string]float64)
 	var cryptoPricesMutex sync.Mutex
-	errChan := make(chan error, len(cryptoList)) // Buffered channel to prevent deadlock
+	var errors []error
+	var errorsMutex sync.Mutex
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -33,27 +34,37 @@ func GetPricesKucoin(cryptoList []string) (map[string]float64, error){
 		wg.Add(1)
 		go func(crypto string) {
 			defer wg.Done()
+
 			url := fmt.Sprintf("%s?symbol=%s-USDT", baseURL, crypto)
 			resp, err := client.Get(url)
 			if err != nil {
-				errChan <- err
+				errorsMutex.Lock()
+				errors = append(errors, fmt.Errorf("failed to fetch %s: %w", crypto, err))
+				errorsMutex.Unlock()
 				return
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
-				errChan <- fmt.Errorf("failed to retrieve price for %s. Status code: %v", crypto, resp.StatusCode)
+				errorsMutex.Lock()
+				errors = append(errors, fmt.Errorf("failed to retrieve price for %s: HTTP %d", crypto, resp.StatusCode))
+				errorsMutex.Unlock()
 				return
 			}
 
 			var priceResp PriceResponse
 			if err := json.NewDecoder(resp.Body).Decode(&priceResp); err != nil {
-				errChan <- err
+				errorsMutex.Lock()
+				errors = append(errors, fmt.Errorf("failed to decode response for %s: %w", crypto, err))
+				errorsMutex.Unlock()
 				return
 			}
+
 			price, err := strconv.ParseFloat(priceResp.Data.Price, 64)
 			if err != nil {
-				errChan <- err
+				errorsMutex.Lock()
+				errors = append(errors, fmt.Errorf("failed to parse price for %s: %w", crypto, err))
+				errorsMutex.Unlock()
 				return
 			}
 
@@ -63,13 +74,16 @@ func GetPricesKucoin(cryptoList []string) (map[string]float64, error){
 		}(crypto)
 	}
 
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
+	wg.Wait()
 
-	for err := range errChan {
-		fmt.Println(err) // Handle errors more robustly depending on requirements
+	if len(errors) > 0 {
+		for _, err := range errors {
+			fmt.Printf("KuCoin API error: %v\n", err)
+		}
+
+		// Return a compound error with all issues
+		return cryptoPrices, fmt.Errorf("encountered %d errors while fetching KuCoin prices: %v", len(errors), errors[0])
 	}
-    return cryptoPrices, nil
+
+	return cryptoPrices, nil
 }

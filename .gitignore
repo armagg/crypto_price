@@ -1,2 +1,41 @@
+# IDE and editor files
 .vscode/extensions.json
 .vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment files (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+crypto_price
+main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test files
+*.test
+*.out
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+.venv
+tmp/
+temp/
+
+.cursor/*
+

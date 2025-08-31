@@ -2,17 +2,18 @@ package jobs
 
 import (
 	"context"
-	"log"
-	"sort"
-	"time"
-	"github.com/go-redis/redis/v8"
-	"encoding/json"
-	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"math"
 	"crypto_price/pkg/config"
 	"crypto_price/pkg/db"
+	"encoding/json"
+	"fmt"
+	"log"
+	"math"
+	"sort"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Transaction struct {
@@ -39,15 +40,16 @@ func calculateUsdtIrrPriceJob() ([]MarketSourceResult, error) {
 	var results []MarketSourceResult
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	data := config.GetConfigs()
-	client, err := db.CreatMongoClient(ctx, data["MONGO_HOST"])
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	defer client.Disconnect(ctx)
 
-	collection := client.Database(data["TRADE_DATABASE"]).Collection(data["LAST_TRADE_COLLECTION"])
+	cfg := config.GetConfigs()
+	client, err := db.GetMongoClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MongoDB client: %w", err)
+	}
+
+	_ = ctx // ctx is used implicitly in MongoDB operations
+
+	collection := client.Database(cfg.TradeDatabase).Collection(cfg.LastTradeCollection)
 
 	marketSources := []struct {
 		MarketName string
@@ -74,16 +76,17 @@ func calculateUsdtIrrPriceJob() ([]MarketSourceResult, error) {
 			"amount":      bson.M{"$gt": THRESHOLD_FOR_BIG_TRANSACTION},
 		}
 
-		cursor, err := collection.Find(context.TODO(), query, options.Find().SetLimit(100))
+		cursor, err := collection.Find(ctx, query, options.Find().SetLimit(100))
 		if err != nil {
-			log.Println(err)
-			return nil, err
+			log.Printf("Failed to query %s:%s transactions: %v", ms.MarketName, ms.Source, err)
+			return nil, fmt.Errorf("failed to query transactions for %s:%s: %w", ms.MarketName, ms.Source, err)
 		}
-		var transactions []Transaction
+		defer cursor.Close(ctx)
 
-		if err = cursor.All(context.TODO(), &transactions); err != nil {
-			log.Println(err)
-			return nil, err
+		var transactions []Transaction
+		if err = cursor.All(ctx, &transactions); err != nil {
+			log.Printf("Failed to decode %s:%s transactions: %v", ms.MarketName, ms.Source, err)
+			return nil, fmt.Errorf("failed to decode transactions for %s:%s: %w", ms.MarketName, ms.Source, err)
 		}
 
 		median, weightedMean, stdDev, sumAmounts := calculateStatistics(transactions)
@@ -137,16 +140,20 @@ func calculateStatistics(transactions []Transaction) (median float64, weightedMe
 	return median, weightedMean, stdDev, sumAmounts
 }
 func StoreUsdtIrrPricesInRedis(rdb *redis.Client, results []MarketSourceResult) error {
-    ctx := context.Background()
-    for _, result := range results {
-        key := fmt.Sprintf("usdtirr:%s", result.Source)
-        value, err := json.Marshal(result)
-        if err != nil {
-            return err
-        }
-        if err := rdb.Set(ctx, key, value, time.Second * 300).Err(); err != nil {
-            return err
-        }
-    }
-    return nil
+	if rdb == nil {
+		return fmt.Errorf("redis client is nil")
+	}
+
+	ctx := context.Background()
+	for _, result := range results {
+		key := fmt.Sprintf("usdtirr:%s", result.Source)
+		value, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("failed to marshal result for %s: %w", result.Source, err)
+		}
+		if err := rdb.Set(ctx, key, value, time.Second*USDTIRR_TTL).Err(); err != nil {
+			return fmt.Errorf("failed to store USDTIRR price for %s: %w", result.Source, err)
+		}
+	}
+	return nil
 }

@@ -6,19 +6,25 @@ import (
 	"crypto_price/pkg/models"
 	"encoding/json"
 	"fmt"
-	"github.com/go-redis/redis/v8"
 	"log"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-redis/redis/v8"
 )
 
 const (
-    DEFUALT_SOURCE = "binance"
-    DEFUALT_QUOTE   = "usdt"
-    DEFUALT_USDT_SOURCE = "nobitex"
+    DEFAULT_SOURCE = "binance"
+    DEFAULT_QUOTE   = "usdt"
+    DEFAULT_USDT_SOURCE = "nobitex"
+
+    REDIS_LONG_TERM_EXPIRATION  = 10 * time.Minute
+    REDIS_SHORT_TERM_EXPIRATION = 20 * time.Second
+
+    PRICE_FRESHNESS_THRESHOLD = 20 * time.Second
 )
 
 type PriceInfo struct {
@@ -81,19 +87,19 @@ func parseAndValidateParams(r *http.Request) (base, source, quote, sourceUsdt st
 	}
 
 	if quote == "" {
-		quote = DEFUALT_QUOTE
+		quote = DEFAULT_QUOTE
 	} else if !isValidQuote(quote) {
 		return "", "", "", "", fmt.Errorf("invalid 'quote' parameter")
 	}
 
 	if source == "" {
-		source = DEFUALT_SOURCE
+		source = DEFAULT_SOURCE
 	} else if !isValidSource(source) {
 		return "", "", "", "", fmt.Errorf("invalid 'source' parameter")
 	}
 
 	if sourceUsdt == "" {
-		sourceUsdt = DEFUALT_USDT_SOURCE
+		sourceUsdt = DEFAULT_USDT_SOURCE
 	}
 
 	return base, source, quote, sourceUsdt, nil
@@ -101,6 +107,14 @@ func parseAndValidateParams(r *http.Request) (base, source, quote, sourceUsdt st
 
 // fetchPrice retrieves the price information based on the provided parameters.
 func fetchPrice(ctx context.Context, base, source, quote, sourceUsdt string) (PriceInfo, error) {
+	// Validate inputs
+	if base == "" {
+		return PriceInfo{}, fmt.Errorf("base currency cannot be empty")
+	}
+	if source == "" {
+		return PriceInfo{}, fmt.Errorf("source cannot be empty")
+	}
+
 	var priceInfo PriceInfo
 	symbol := base + "USDT"
 
@@ -109,14 +123,18 @@ func fetchPrice(ctx context.Context, base, source, quote, sourceUsdt string) (Pr
 		log.Printf("Fetching price for %s from %s", symbol, source)
 		price, err := getPriceFromRedis(ctx, symbol, source)
 		if err != nil {
-			return PriceInfo{}, fmt.Errorf("error retrieving price for %s from %s: %v", symbol, source, err)
+			return PriceInfo{}, fmt.Errorf("failed to retrieve USDT price for %s from %s: %w", symbol, source, err)
 		}
 		priceInfo = price
 
 	case "IRR", "IRT":
 		usdtPrice, err := getUsdtIrrFromRedis(ctx, sourceUsdt)
 		if err != nil {
-			return PriceInfo{}, fmt.Errorf("error retrieving USDT price from %s: %v", sourceUsdt, err)
+			return PriceInfo{}, fmt.Errorf("failed to retrieve USDT/%s conversion rate from %s: %w", strings.ToUpper(quote), sourceUsdt, err)
+		}
+
+		if usdtPrice <= 0 {
+			return PriceInfo{}, fmt.Errorf("invalid USDT/%s conversion rate: %f", strings.ToUpper(quote), usdtPrice)
 		}
 
 		if base == "USDT" || base == "USDC" {
@@ -127,8 +145,13 @@ func fetchPrice(ctx context.Context, base, source, quote, sourceUsdt string) (Pr
 		} else {
 			basePrice, err := getPriceFromRedis(ctx, symbol, source)
 			if err != nil {
-				return PriceInfo{}, fmt.Errorf("error retrieving price for %s from %s: %v", symbol, source, err)
+				return PriceInfo{}, fmt.Errorf("failed to retrieve base price for %s from %s: %w", symbol, source, err)
 			}
+
+			if basePrice.Price <= 0 {
+				return PriceInfo{}, fmt.Errorf("invalid base price for %s: %f", symbol, basePrice.Price)
+			}
+
 			priceInfo = PriceInfo{
 				Price:     basePrice.Price * usdtPrice,
 				Timestamp: basePrice.Timestamp,
@@ -136,13 +159,16 @@ func fetchPrice(ctx context.Context, base, source, quote, sourceUsdt string) (Pr
 		}
 
 	default:
-		return PriceInfo{}, fmt.Errorf("invalid 'quote' parameter")
+		return PriceInfo{}, fmt.Errorf("unsupported quote currency: %s (supported: USDT, IRR, IRT)", quote)
+	}
+
+	if priceInfo.Price <= 0 {
+		return PriceInfo{}, fmt.Errorf("calculated price is invalid: %f", priceInfo.Price)
 	}
 
 	return priceInfo, nil
 }
 
-// buildPriceResponse constructs the response to be sent back to the client.
 func buildPriceResponse(base, source, quote, sourceUsdt string, priceInfo PriceInfo) PriceResponse {
 	elapsed := time.Since(priceInfo.Timestamp).Seconds()
 	symbol := base + "USDT"
@@ -156,7 +182,7 @@ func buildPriceResponse(base, source, quote, sourceUsdt string, priceInfo PriceI
 		Quote:      quote,
 	}
 
-	if elapsed > 20 { // Assuming 20 seconds as the threshold for freshness
+	if elapsed > PRICE_FRESHNESS_THRESHOLD.Seconds() { // Price freshness threshold
 		response.Note = "Price may be outdated."
 	}
 
@@ -167,8 +193,10 @@ func buildPriceResponse(base, source, quote, sourceUsdt string, priceInfo PriceI
 func getPriceFromRedis(ctx context.Context, symbol, source string) (PriceInfo, error) {
 	var priceInfo PriceInfo
 
-	rdb := db.CreateRedisClient()
-    defer rdb.Close()
+	rdb, err := db.GetRedisClient()
+	if err != nil {
+		return priceInfo, fmt.Errorf("failed to get Redis client: %w", err)
+	}
 
 	// Short-term keys
 	shortTermKey := fmt.Sprintf("%s:%s:short", source, symbol)
@@ -220,27 +248,41 @@ func getPriceFromRedis(ctx context.Context, symbol, source string) (PriceInfo, e
 
 // getUsdtIrrFromRedis retrieves the USDT to IRR conversion rate from Redis.
 func getUsdtIrrFromRedis(ctx context.Context, sourceUsdt string) (float64, error) {
-	rdb := db.CreateRedisClient()
-    defer rdb.Close()
+	if sourceUsdt == "" {
+		return -1, fmt.Errorf("sourceUsdt cannot be empty")
+	}
+
+	rdb, err := db.GetRedisClient()
+	if err != nil {
+		return -1, fmt.Errorf("failed to get Redis client: %w", err)
+	}
+
 	usdtIrrKey := fmt.Sprintf("usdtirr:%s", sourceUsdt)
 
 	value, err := rdb.Get(ctx, usdtIrrKey).Result()
 	if err != nil {
 		if err == redis.Nil {
-			return -1, fmt.Errorf("price not available for USDTIRR from %s", sourceUsdt)
+			return -1, fmt.Errorf("USDT/%s conversion rate not available in cache (key: %s)", strings.ToUpper(sourceUsdt), usdtIrrKey)
 		}
-		return -1, fmt.Errorf("error retrieving USDTIRR price from Redis: %v", err)
+		return -1, fmt.Errorf("failed to retrieve USDT/%s rate from Redis: %w", strings.ToUpper(sourceUsdt), err)
 	}
 
 	var priceStruct models.MarketSourceResult
 	if err := json.Unmarshal([]byte(value), &priceStruct); err != nil {
-		return -1, fmt.Errorf("error parsing USDTIRR price from %s: %v", sourceUsdt, err)
+		return -1, fmt.Errorf("failed to parse USDT/%s rate data from Redis: %w", strings.ToUpper(sourceUsdt), err)
+	}
+
+	if priceStruct.WeightedMean <= 0 {
+		return -1, fmt.Errorf("invalid USDT/%s conversion rate: %f (must be positive)", strings.ToUpper(sourceUsdt), priceStruct.WeightedMean)
 	}
 
 	return priceStruct.WeightedMean, nil
 }
 
 func isValidSource(source string) bool {
+	if source == "" {
+		return false
+	}
 	validSources := map[string]bool{
 		"binance": true,
 		"kucoin":  true,
@@ -248,9 +290,11 @@ func isValidSource(source string) bool {
 	return validSources[strings.ToLower(source)]
 }
 
-
 // isValidQuote checks if the provided quote is valid.
 func isValidQuote(quote string) bool {
+	if quote == "" {
+		return false
+	}
 	validQuotes := map[string]bool{
 		"usdt": true,
 		"irr":  true,
@@ -261,7 +305,10 @@ func isValidQuote(quote string) bool {
 
 // isValidSymbol checks if the provided symbol is valid.
 func isValidSymbol(symbol string) bool {
-	validSymbol := regexp.MustCompile(`^[A-Za-z0-9_]+$`)
-	return validSymbol.MatchString(symbol)
+	if symbol == "" || len(symbol) > 10 {
+		return false
+	}
+	validSymbol := regexp.MustCompile(`^[A-Z0-9_]{1,10}$`)
+	return validSymbol.MatchString(strings.ToUpper(symbol))
 }
 
